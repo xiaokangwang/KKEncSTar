@@ -15,7 +15,7 @@ type cmdoptS struct {
 	out_dir    string
 	secret_key string
 	reverse    bool
-  parrate     int
+	parrate    int
 }
 
 //define and parse commandline arg
@@ -27,7 +27,7 @@ func argpg() cmdoptS {
 	flag.StringVar(&cmdopt.out_dir, "od", "out", "The dir output go to.")
 	flag.StringVar(&cmdopt.secret_key, "s", "", "The password used to seal file, if it is empty, we will generate one for you.")
 	flag.BoolVar(&cmdopt.reverse, "r", false, "Reverse operation.")
-  flag.IntVar(&cmdopt.parrate, "p", 0, "Define Par2 reconstruction rate  in %%. Unset means no reconstruction data.")
+	flag.IntVar(&cmdopt.parrate, "p", 0, "Define Par2 reconstruction rate  in %%. Unset means no reconstruction data.")
 
 	//Do it!
 	flag.Parse()

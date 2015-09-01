@@ -10,9 +10,9 @@ import (
 	"golang.org/x/crypto/sha3"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
-  "os/exec"
-  "strconv"
+	"strconv"
 )
 
 func progd_forword(ar cmdoptS) {
@@ -25,8 +25,6 @@ func progd_forword(ar cmdoptS) {
 		fmt.Println(err.Error())
 		os.Exit(-1)
 	}
-
-
 
 	//generate crypto nonce
 
@@ -47,7 +45,7 @@ func progd_forword(ar cmdoptS) {
 	keyhasher.Write(nonce)
 	keyhasher.Write([]byte(ar.secret_key))
 
-	xchachakey := make([]byte, 32)"strconv"
+	xchachakey := make([]byte, 32)
 	keyhasher.Read(xchachakey)
 
 	poly1305key := make([]byte, 32)
@@ -97,52 +95,49 @@ func progd_forword(ar cmdoptS) {
 
 	}
 
-  FileHash:=new([]byte,64)
-  HashWriter.Read(FileHash)
+	FileHash := new([]byte, 64)
+	HashWriter.Read(FileHash)
 
-  var poly1305sum [16]byte
-  var poly1305sum_key [32]byte
+	var poly1305sum [16]byte
+	var poly1305sum_key [32]byte
 
-  copy(poly1305sum_key[:],poly1305key)
+	copy(poly1305sum_key[:], poly1305key)
 
-  poly1305.Sum(&poly1305sum,FileHash,poly1305sum_key)
+	poly1305.Sum(&poly1305sum, FileHash, poly1305sum_key)
 
-  err = db.Put([]byte("poly1305sum"), poly1305sum[], nil)
-  if err != nil {
-    fmt.Println(err.Error())
-    os.Exit(-1)
-  }
-
-  db.
-
-
-
-
-//finially we call par2 to compute reconstruction data
-  if ar.parrate!=0{
-    path, err := exec.LookPath("par2")
+	err = db.Put([]byte("poly1305sum"), poly1305sum[:], nil)
 	if err != nil {
-		 fmt.Println("Unable to whereis par2, reconstruction data compute was ignored:"+err.Error())
+		fmt.Println(err.Error())
+		os.Exit(-1)
 	}
 
-  DirIf,_:=os.Open(ar.out_dir)
-  DirIfs,_:=DirIf.Readdirnames()
+	//we won't use it anymore
+	db.Close()
 
-	cmd := exec.Command("par2","c" ,"-a"+"mdpp","-r"+strconv.Itoa(ar.parrate),"-v","--",DirIfs...)
-  Absp,_:=filepath.Abs(ar.out_dir)
-  cmd.Dir=Absp
-  err=cmd.Start()
-  if err != nil {
-     fmt.Println("Unable to exec par2, reconstruction data compute was ignored:"+err.Error())
-  }
-  err = cmd.Wait()
-  if err!=nil{
-    fmt.Println("par2 was finished unsuccessfully, reconstruction data compute was ignored(or failed):"+err.Error())
-  }
-  }
+	//finially we call par2 to compute reconstruction data
+	if ar.parrate != 0 {
+		path, err := exec.LookPath("par2")
+		if err != nil {
+			fmt.Println("Unable to whereis par2, reconstruction data compute was ignored:" + err.Error())
+		}
 
-  fmt.Println("Hash: %x",FileHash)
+		DirIf, _ := os.Open(ar.out_dir)
+		DirIfs, _ := DirIf.Readdirnames()
 
+		cmd := exec.Command("par2", "c", "-a"+"mdpp", "-r"+strconv.Itoa(ar.parrate), "-v", "--", DirIfs...)
+		Absp, _ := filepath.Abs(ar.out_dir)
+		cmd.Dir = Absp
+		err = cmd.Start()
+		if err != nil {
+			fmt.Println("Unable to exec par2, reconstruction data compute was ignored:" + err.Error())
+		}
+		err = cmd.Wait()
+		if err != nil {
+			fmt.Println("par2 was finished unsuccessfully, reconstruction data compute was ignored(or failed):" + err.Error())
+		}
+	}
+
+	fmt.Println("Hash: %x", FileHash)
 
 }
 
