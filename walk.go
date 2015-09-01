@@ -121,9 +121,11 @@ func progd_forword(ar cmdoptS) {
   }
   err = cmd.Wait()
   if err!=nil{
-    fmt.Println("par2 finished unsuccessfully, reconstruction data compute was ignored(or failed):"+err.Error())
+    fmt.Println("par2 was finished unsuccessfully, reconstruction data compute was ignored(or failed):"+err.Error())
   }
   }
+
+  
 
 
 }
