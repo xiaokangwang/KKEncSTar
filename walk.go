@@ -26,7 +26,7 @@ func progd_forword(ar cmdoptS) {
 		os.Exit(-1)
 	}
 
-	defer db.Close()
+
 
 	//generate crypto nonce
 
@@ -100,6 +100,22 @@ func progd_forword(ar cmdoptS) {
   FileHash:=new([]byte,64)
   HashWriter.Read(FileHash)
 
+  var poly1305sum [16]byte
+  var poly1305sum_key [32]byte
+
+  copy(poly1305sum_key[:],poly1305key)
+
+  poly1305.Sum(&poly1305sum,FileHash,poly1305sum_key)
+
+  err = db.Put([]byte("poly1305sum"), poly1305sum[], nil)
+  if err != nil {
+    fmt.Println(err.Error())
+    os.Exit(-1)
+  }
+
+  db.
+
+
 
 
 //finially we call par2 to compute reconstruction data
@@ -125,7 +141,7 @@ func progd_forword(ar cmdoptS) {
   }
   }
 
-  
+  fmt.Println("Hash: %x",FileHash)
 
 
 }
