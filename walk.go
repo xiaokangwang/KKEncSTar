@@ -138,6 +138,7 @@ func progd_forword(ar cmdoptS) {
 	}
 
 	fmt.Println("Hash: %x", FileHash)
+  fmt.Println("Key: %s", ar.secret_key)
 
 }
 
