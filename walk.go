@@ -95,6 +95,12 @@ func progd_forword(ar cmdoptS) {
 
 	}
 
+  FileHash:=new([]byte,64)
+  HashWriter.Read(FileHash)
+
+
+
+
 }
 
 func GenFileList(s string) {
