@@ -1,8 +1,12 @@
 package main
 
 import (
+	"archive/tar"
 	"errors"
+	"github.com/codahale/chacha20"
+	"github.com/golang/snappy"
 	"github.com/syndtr/goleveldb/leveldb"
+	"golang.org/x/crypto/poly1305"
 	"golang.org/x/crypto/sha3"
 	"io"
 	"os"
@@ -47,9 +51,112 @@ func progd_forword(ar cmdoptS) {
 	poly1305key := make([]byte, 32)
 	keyhasher.Read(poly1305key)
 
+	//init stream
+
+	var LimitedSizeWriteToFilei LimitedSizeWriteToFile
+	LimitedSizeWriteToFilei.TargetPatten = ar.in_dir + "/df%X"
+
+	cryptos, err := chacha20.NewXChaCha(xchachakey, nonce)
+
+	HashWriter := sha3.NewShake256()
+
+	CyDWriter := io.MultiWriter(LimitedSizeWriteToFilei, HashWriter)
+
+	Data_writer := NewEncryptedWriter(cryptos, CyDWriter)
+
+	CompressedStream = snappy.NewWriter(Data_writer)
+
+	TarStream := tar.NewWriter(CompressedStream)
+
+	GenFileList(ar.in_dir)
+
+	for id := range rfi {
+		filedes, err := os.Open(ar.in_dir + "/" + igni[id])
+		if err != nil {
+			fmt.Println("Failed to open file " + igni[id] + ":" + err.Error())
+		}
+		hdr := &tar.Header{
+			Name: rfi[filename],
+			Mode: 0600,
+			Size: filedes.Stat().Size(),
+		}
+
+		if err := TarStream.WriteHeader(hdr); err != nil {
+			log.Fatalln(err)
+		}
+
+		_, err = io.Copy(TarStream, filedes)
+
+		if err != nil {
+			fmt.Println("Failed to open file " + igni[id] + ":" + err.Error())
+		}
+
+		filedes.Close()
+
+	}
+
 }
 
+func GenFileList(s string) {
+
+	igni = len(s) + 1
+
+	filepath.Walk(s+"/", swalk)
+
+}
+
+var igni, CurrentFn int
+
+var rfi map[int]string
+
 func swalk(path string, info os.FileInfo, err error) error {
+
+	if !info.IsDir() {
+		rfi[CurrentFn] = path[igni:]
+		CurrentFn += 1
+	}
+
+}
+
+func NewEncryptedWriter(target io.Writer, encryptFunc cipher.Stream) EncryptedWriter {
+	var EncryptedWriteri EncryptedWriter
+	EncryptedWriteri.target = target
+	EncryptedWriteri.encryptFunc = encryptFunc
+	return EncryptedWriteri
+
+}
+
+type EncryptedWriter struct {
+	io.Writer
+	target      io.Writer
+	encryptFunc cipher.Stream
+}
+
+func (lf *EncryptedWriter) Write(p []byte) (n int, err error) {
+	inputBuffer := make([]byte, len(p))
+	lf.encryptFunc.XORKeyStream[inputBuffer:p]
+	return lf.target.Write(inputBuffer)
+
+}
+
+func NewDecryptedReader(target io.Reader, decryptFunc cipher.Stream) DecryptedReader {
+	var DecryptedReaderi EncryptedReader
+	DecryptedReaderi.target = target
+	DecryptedReaderi.decryptFunc = decryptFunc
+	return DecryptedReaderi
+
+}
+
+type DecryptedReader struct {
+	io.Reader
+	target      io.Reader
+	decryptFunc cipher.Stream
+}
+
+func (lf *DecryptedReader) Read(p []byte) (n int, err error) {
+	inputBuffer := make([]byte, len(p))
+	lf.decryptFunc.XORKeyStream[inputBuffer:p]
+	return lf.target.Read(inputBuffer)
 
 }
 
