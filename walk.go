@@ -11,6 +11,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+  "os/exec"
+  "strconv"
 )
 
 func progd_forword(ar cmdoptS) {
@@ -45,7 +47,7 @@ func progd_forword(ar cmdoptS) {
 	keyhasher.Write(nonce)
 	keyhasher.Write([]byte(ar.secret_key))
 
-	xchachakey := make([]byte, 32)
+	xchachakey := make([]byte, 32)"strconv"
 	keyhasher.Read(xchachakey)
 
 	poly1305key := make([]byte, 32)
@@ -99,6 +101,29 @@ func progd_forword(ar cmdoptS) {
   HashWriter.Read(FileHash)
 
 
+
+//finially we call par2 to compute reconstruction data
+  if ar.parrate!=0{
+    path, err := exec.LookPath("par2")
+	if err != nil {
+		 fmt.Println("Unable to whereis par2, reconstruction data compute was ignored:"+err.Error())
+	}
+
+  DirIf,_:=os.Open(ar.out_dir)
+  DirIfs,_:=DirIf.Readdirnames()
+
+	cmd := exec.Command("par2","c" ,"-a"+"mdpp","-r"+strconv.Itoa(ar.parrate),"-v","--",DirIfs...)
+  Absp,_:=filepath.Abs(ar.out_dir)
+  cmd.Dir=Absp
+  err=cmd.Start()
+  if err != nil {
+     fmt.Println("Unable to exec par2, reconstruction data compute was ignored:"+err.Error())
+  }
+  err = cmd.Wait()
+  if err!=nil{
+    fmt.Println("par2 finished unsuccessfully, reconstruction data compute was ignored(or failed):"+err.Error())
+  }
+  }
 
 
 }
