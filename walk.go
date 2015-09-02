@@ -108,7 +108,7 @@ func progd_forword(ar cmdoptS) {
 
 	copy(poly1305sum_key[:], poly1305key)
 
-	poly1305.Sum(&poly1305sum, FileHash, poly1305sum_key)
+	poly1305.Sum(&poly1305sum, FileHash, &poly1305sum_key)
 
 	err = db.Put([]byte("poly1305sum"), poly1305sum[:], nil)
 	if err != nil {
@@ -336,8 +336,43 @@ func progd_reverse(ar cmdoptS) {
 			filenamex = url.QueryEscape(hdr.Name)
 		}
 
-		os.Create(ar.out_dir + "/" + filenamex)
+		cfhd, err := os.Create(ar.out_dir + "/" + filenamex)
 
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		_, err := io.Copy(cfhd, TarStream)
+
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		cfhd.Close()
+
+	}
+
+	LimitedSizeReadFromi.Finialize()
+
+	FileHash := new([]byte, 64)
+	HashWriter.Read(FileHash)
+	fmt.Println("Hash: %x", FileHash)
+
+	var poly1305sum [16]byte
+	var poly1305sum_key [32]byte
+	poly1305sums, err := db.Get([]byte("poly1305sum"), nil)
+
+	copy(poly1305sum[:], poly1305sums)
+	copy(poly1305sum_key[:], poly1305key)
+
+	iscorrect := poly1305.Verify(&poly1305sum, FileHash, &poly1305sum_key)
+
+	if iscorrect == true {
+		fmt.Println("Correct File data")
+		os.Exit(0)
+	} else {
+		fmt.Println("File data is't match!")
+		os.Exit(-2)
 	}
 
 }

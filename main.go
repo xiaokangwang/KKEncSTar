@@ -86,11 +86,11 @@ func GenKey() string {
 }
 
 func forword(ar cmdoptS) {
-
+	progd_forword(ar)
 }
 
 func reverse(ar cmdoptS) {
-
+	progd_reverse(ar)
 }
 
 func main() {
