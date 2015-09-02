@@ -3,19 +3,23 @@ package main
 import (
 	"archive/tar"
 	"bytes"
+	"crypto/cipher"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"github.com/codahale/chacha20"
 	"github.com/golang/snappy"
 	"github.com/syndtr/goleveldb/leveldb"
 	"golang.org/x/crypto/poly1305"
 	"golang.org/x/crypto/sha3"
 	"io"
+	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"url"
+	"strings"
 )
 
 func progd_forword(ar cmdoptS) {
@@ -31,7 +35,7 @@ func progd_forword(ar cmdoptS) {
 
 	//generate crypto nonce
 
-	nonce := GenerateRandomBytes(24)
+	nonce, _ := GenerateRandomBytes(24)
 
 	//store it
 
@@ -67,21 +71,22 @@ func progd_forword(ar cmdoptS) {
 
 	Data_writer := NewEncryptedWriter(cryptos, CyDWriter)
 
-	CompressedStream = snappy.NewWriter(Data_writer)
+	CompressedStream := snappy.NewWriter(Data_writer)
 
 	TarStream := tar.NewWriter(CompressedStream)
 
 	GenFileList(ar.in_dir)
 
 	for id := range rfi {
-		filedes, err := os.Open(ar.in_dir + "/" + igni[id])
+		filedes, err := os.Open(ar.in_dir + "/" + rfi[id])
 		if err != nil {
-			fmt.Println("Failed to open file " + igni[id] + ":" + err.Error())
+			fmt.Println("Failed to open file " + rfi[id] + ":" + err.Error())
 		}
+		filein, _ := filedes.Stat()
 		hdr := &tar.Header{
-			Name: rfi[filename],
+			Name: rfi[id],
 			Mode: 0600,
-			Size: filedes.Stat().Size(),
+			Size: filein.Size(),
 		}
 
 		if err := TarStream.WriteHeader(hdr); err != nil {
@@ -91,16 +96,16 @@ func progd_forword(ar cmdoptS) {
 		_, err = io.Copy(TarStream, filedes)
 
 		if err != nil {
-			fmt.Println("Failed to open file " + igni[id] + ":" + err.Error())
+			fmt.Println("Failed to open file " + rfi[id] + ":" + err.Error())
 		}
 
 		filedes.Close()
 
 	}
 
-	_, _, nd = LimitedSizeWriteToFilei.Finialize()
+	_, _, nd := LimitedSizeWriteToFilei.Finialize()
 
-	FileHash := new([]byte, 64)
+	FileHash := make([]byte, 64)
 	HashWriter.Read(FileHash)
 
 	var poly1305sum [16]byte
@@ -130,15 +135,19 @@ func progd_forword(ar cmdoptS) {
 
 	//finially we call par2 to compute reconstruction data
 	if ar.parrate != 0 {
-		path, err := exec.LookPath("par2")
+		_, err := exec.LookPath("par2")
 		if err != nil {
 			fmt.Println("Unable to whereis par2, reconstruction data compute was ignored:" + err.Error())
 		}
 
 		DirIf, _ := os.Open(ar.out_dir)
-		DirIfs, _ := DirIf.Readdirnames()
+		DirIfs, _ := DirIf.Readdirnames(-1)
 
-		cmd := exec.Command("par2", "c", "-a"+"mdpp", "-r"+strconv.Itoa(ar.parrate), "-v", "--", DirIfs...)
+		cmdargs := []string{"c", "-a", "mdpp", "-r" + strconv.Itoa(ar.parrate), "-v", "--"}
+		cmdargs = append(cmdargs, DirIfs...)
+
+		cmd := exec.Command("par2", cmdargs...)
+		cmd.Stdout = os.Stdout
 		Absp, _ := filepath.Abs(ar.out_dir)
 		cmd.Dir = Absp
 		err = cmd.Start()
@@ -159,15 +168,13 @@ func progd_forword(ar cmdoptS) {
 func progd_reverse(ar cmdoptS) {
 
 	if ar.parrate != 0 { //we do not care the actual number
-		path, err := exec.LookPath("par2")
+		_, err := exec.LookPath("par2")
 		if err != nil {
 			fmt.Println("Unable to whereis par2, metadata reconstruction was ignored:" + err.Error())
 		}
 
-		DirIf, _ := os.Open(ar.out_dir)
-		DirIfs, _ := DirIf.Readdirnames()
-
 		cmd := exec.Command("par2", "r", "-a"+"mdpp", "-v", "--", "md")
+		cmd.Stdout = os.Stdout
 		Absp, _ := filepath.Abs(ar.out_dir)
 		cmd.Dir = Absp
 		err = cmd.Start()
@@ -196,21 +203,19 @@ func progd_reverse(ar cmdoptS) {
 	}
 
 	var nd int64
-	var not_going bool
 
 	missing_file := make([]string, 0, 25)
 	all_file := make([]string, 0, 25)
 
-	binary.Read(ndb, binary.LittleEndian, nd)
-
-	for cfn := range nd {
+	binary.Read(bytes.NewBuffer(ndb), binary.LittleEndian, nd)
+	var cfn int64
+	for cfn <= nd {
 		cnnn := fmt.Sprintf(ar.in_dir+"/df%X", cfn)
-		append(all_file, fmt.Sprintf("df%X", cfn))
+		all_file = append(all_file, fmt.Sprintf("df%X", cfn))
 
 		if _, err := os.Stat(cnnn); err != nil {
 			if ar.parrate == 0 {
-				not_going = true
-				append(missing_file, fmt.Sprintf("df%X", cfn))
+				missing_file = append(missing_file, fmt.Sprintf("df%X", cfn))
 			} else {
 
 				//touch the missing file so that par2 will try to recover this
@@ -223,17 +228,18 @@ func progd_reverse(ar cmdoptS) {
 
 				cfnd.Close()
 
-				append(missing_file, fmt.Sprintf("df%X", cfn))
+				missing_file = append(missing_file, fmt.Sprintf("df%X", cfn))
 
 			}
 		}
+		cfn++
 	}
 
 	if len(missing_file) != 0 {
 		if ar.parrate == 0 {
-			fmt.Println("%d file missing")
+			fmt.Println("%d file missing", len(missing_file))
 
-			for cf := range len(missing_file) {
+			for cf := range missing_file {
 				fmt.Println(cf)
 			}
 
@@ -243,8 +249,8 @@ func progd_reverse(ar cmdoptS) {
 		} else {
 			fmt.Println("%d file missing, but reconstruction by par2 underway.")
 
-			for cf := range len(missing_file) {
-				fmt.Println(missing_file[cf])
+			for cf := range missing_file {
+				fmt.Println(cf)
 			}
 		}
 	}
@@ -252,12 +258,17 @@ func progd_reverse(ar cmdoptS) {
 	data_reconstruction_unsuccessful := true
 
 	if ar.parrate != 0 { //we do not care the actual number
-		path, err := exec.LookPath("par2")
+		_, err := exec.LookPath("par2")
 		if err != nil {
 			fmt.Println("Unable to whereis par2, data reconstruction was ignored:" + err.Error())
 		}
 
-		cmd := exec.Command("par2", "r", "-a"+"mdpp", "-v", "--", all_file...)
+		cmdargs := []string{"r", "-a" + "mdpp", "-v", "--"}
+
+		cmdargs = append(cmdargs, all_file...)
+
+		cmd := exec.Command("par2", cmdargs...)
+		cmd.Stdout = os.Stdout
 		Absp, _ := filepath.Abs(ar.out_dir)
 		cmd.Dir = Absp
 		err = cmd.Start()
@@ -276,8 +287,8 @@ func progd_reverse(ar cmdoptS) {
 		fmt.Println("operation failed: unable to reconstruct.")
 		fmt.Println("If data were correct, remove parrate might do.")
 
-		for dfnow := range len(missing_file) {
-			os.Remove(ar.in_dir + "/" + missing_file)
+		for cf := range missing_file {
+			os.Remove(fmt.Sprint("%s/%s", ar.in_dir, cf))
 		}
 
 		os.Exit(-1)
@@ -318,7 +329,7 @@ func progd_reverse(ar cmdoptS) {
 
 	DataReader := NewDecryptedReader(Tread, cryptos)
 
-	DeCompressedStream = snappy.NewReader(DataReader)
+	DeCompressedStream := snappy.NewReader(DataReader)
 
 	TarStream := tar.NewReader(DeCompressedStream)
 
@@ -342,7 +353,7 @@ func progd_reverse(ar cmdoptS) {
 			log.Fatalln(err)
 		}
 
-		_, err := io.Copy(cfhd, TarStream)
+		_, err = io.Copy(cfhd, TarStream)
 
 		if err != nil {
 			log.Fatalln(err)
@@ -354,7 +365,7 @@ func progd_reverse(ar cmdoptS) {
 
 	LimitedSizeReadFromi.Finialize()
 
-	FileHash := new([]byte, 64)
+	FileHash := make([]byte, 64)
 	HashWriter.Read(FileHash)
 	fmt.Println("Hash: %x", FileHash)
 
@@ -408,10 +419,10 @@ func swalk(path string, info os.FileInfo, err error) error {
 		rfi[CurrentFn] = path[igni:]
 		CurrentFn += 1
 	}
-
+	return nil
 }
 
-func NewEncryptedWriter(target io.Writer, encryptFunc cipher.Stream) EncryptedWriter {
+func NewEncryptedWriter(encryptFunc cipher.Stream, target io.Writer) EncryptedWriter {
 	var EncryptedWriteri EncryptedWriter
 	EncryptedWriteri.target = target
 	EncryptedWriteri.encryptFunc = encryptFunc
@@ -425,15 +436,15 @@ type EncryptedWriter struct {
 	encryptFunc cipher.Stream
 }
 
-func (lf *EncryptedWriter) Write(p []byte) (n int, err error) {
+func (lf EncryptedWriter) Write(p []byte) (n int, err error) {
 	inputBuffer := make([]byte, len(p))
-	lf.encryptFunc.XORKeyStream[inputBuffer:p]
+	lf.encryptFunc.XORKeyStream(inputBuffer, p)
 	return lf.target.Write(inputBuffer)
 
 }
 
 func NewDecryptedReader(target io.Reader, decryptFunc cipher.Stream) DecryptedReader {
-	var DecryptedReaderi EncryptedReader
+	var DecryptedReaderi DecryptedReader
 	DecryptedReaderi.target = target
 	DecryptedReaderi.decryptFunc = decryptFunc
 	return DecryptedReaderi
@@ -446,9 +457,9 @@ type DecryptedReader struct {
 	decryptFunc cipher.Stream
 }
 
-func (lf *DecryptedReader) Read(p []byte) (n int, err error) {
+func (lf DecryptedReader) Read(p []byte) (n int, err error) {
 	inputBuffer := make([]byte, len(p))
-	lf.decryptFunc.XORKeyStream[inputBuffer:p]
+	lf.decryptFunc.XORKeyStream(inputBuffer, p)
 	return lf.target.Read(inputBuffer)
 
 }
@@ -458,44 +469,45 @@ type LimitedSizeWriteToFile struct {
 	io.Writer
 	TargetPatten string
 	cfd          *os.File //current file descripter
-	cfn          int64    //currnet file number
-	cfnd         int64    //current file byte written
-	nd           int64    //bytes written
+	cfn          *int64   //currnet file number
+	cfnd         *int64   //current file byte written
+	nd           *int64   //bytes written
 }
 
-func (lf *LimitedSizeWriteToFile) Write(p []byte) (n int, err error) {
+func (lf LimitedSizeWriteToFile) Write(p []byte) (n int, err error) {
 
 	if lf.TargetPatten == "" {
 		return 0, errors.New("LimitedSizeWriteToFile: no patten set")
 	}
 
 	//create a file if first call
-	if lf.nd == 0 {
-		fn := fmt.Sprintf(lf.TargetPatten, cfn)
-		lf.fd, err = os.Create(fn)
+	if *lf.nd == int64(0) {
+		fn := fmt.Sprintf(lf.TargetPatten, *lf.cfn)
+		lf.cfd, err = os.Create(fn)
 		if err != nil {
 			return 0, err
 		}
 	}
 
-	if len(p) >= BytesPerFile {
+	if int64(len(p)) >= lf.BytesPerFile {
 		return 0, errors.New("LimitedSizeWriteToFile: BytesPerFile <= single write")
 	}
 
-	if len(p)+cfnd >= BytesPerFile {
-		cfd.Close()
-		cfn += 1
-		cfnd = 0
-		lf.fd, err = os.Create(fn)
+	if int64(len(p))+*lf.cfnd >= lf.BytesPerFile {
+		lf.cfd.Close()
+		*lf.cfn += 1
+		*lf.cfnd = 0
+		fn := fmt.Sprintf(lf.TargetPatten, *lf.cfn)
+		lf.cfd, err = os.Create(fn)
 		if err != nil {
 			return 0, err
 		}
 	}
 
-	n, err := lf.cfd.Write(p)
+	n, err = lf.cfd.Write(p)
 
-	lf.cfnd += n
-	lf.nd += n
+	*lf.cfnd += int64(n)
+	*lf.nd += int64(n)
 
 	return n, err
 
@@ -503,7 +515,7 @@ func (lf *LimitedSizeWriteToFile) Write(p []byte) (n int, err error) {
 
 func (lf *LimitedSizeWriteToFile) Finialize() (FileCreated, LastSize, TotalBytesWritten int64) {
 	lf.cfd.Close()
-	return cfn, cfnd, nd
+	return *lf.cfn, *lf.cfnd, *lf.nd
 
 }
 
@@ -511,30 +523,30 @@ type LimitedSizeReadFrom struct {
 	io.Reader
 	TargetPatten string
 	cfd          *os.File //current file descripter
-	cfn          int64    //currnet file number
-	cfnd         int64    //current file byte readden
-	nd           int64    //bytes readden
+	cfn          *int64   //currnet file number
+	cfnd         *int64   //current file byte readden
+	nd           *int64   //bytes readden
 }
 
-func (lf *LimitedSizeReadFrom) Read(p []byte) (n int, err error) {
+func (lf LimitedSizeReadFrom) Read(p []byte) (n int, err error) {
 	if lf.TargetPatten == "" {
 		return 0, errors.New("LimitedSizeWriteToFile: no patten set")
 	}
 
 	//Open a file if first call
-	if lf.nd == 0 {
-		fn := fmt.Sprintf(lf.TargetPatten, cfn)
-		lf.fd, err = os.OpenFile(fn)
+	if *lf.nd == int64(0) {
+		fn := fmt.Sprintf(lf.TargetPatten, *lf.cfn)
+		lf.cfd, err = os.Open(fn)
 		if err != nil {
 			return 0, err
 		}
 	}
 
-	n, err := lf.cfd.Read(p)
+	n, err = lf.cfd.Read(p)
 
 	if err == io.EOF {
-		fn := fmt.Sprintf(lf.TargetPatten, cfn+1)
-		lf.fd, err = os.OpenFile(fn)
+		fn := fmt.Sprintf(lf.TargetPatten, *lf.cfn+1)
+		lf.cfd, err = os.Open(fn)
 		if err != nil {
 
 			if os.IsNotExist(err) {
@@ -542,8 +554,8 @@ func (lf *LimitedSizeReadFrom) Read(p []byte) (n int, err error) {
 			} else {
 				return 0, err
 			}
-			cfn += 1
-			cfnd = 0
+			*lf.cfn += 1
+			*lf.cfnd = 0
 		}
 	}
 	return n, err
@@ -552,6 +564,6 @@ func (lf *LimitedSizeReadFrom) Read(p []byte) (n int, err error) {
 
 func (lf *LimitedSizeReadFrom) Finialize() (FileCreated, LastSize, TotalBytesWritten int64) {
 	lf.cfd.Close()
-	return cfn, cfnd, nd
+	return *lf.cfn, *lf.cfnd, *lf.nd
 
 }

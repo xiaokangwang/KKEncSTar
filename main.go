@@ -56,7 +56,7 @@ func argCheck(ar cmdoptS) bool {
 		return false
 	}
 
-	if ar.reverse == true && secret_key == "" {
+	if ar.reverse == true && ar.secret_key == "" {
 		fmt.Println("Reverse but no key")
 		return false
 	}
@@ -82,7 +82,8 @@ func GenerateRandomString(s int) (string, error) {
 }
 
 func GenKey() string {
-	return GenerateRandomString(32)
+	s, _ := GenerateRandomString(32)
+	return s
 }
 
 func forword(ar cmdoptS) {
@@ -97,7 +98,7 @@ func main() {
 
 	cmdopt := argpg()
 
-	if argCheck() != true {
+	if argCheck(cmdopt) != true {
 		os.Exit(-1)
 	}
 
@@ -107,7 +108,7 @@ func main() {
 
 	//create output folder
 
-	err := os.Mkdir(cmdopt.out_dir)
+	err := os.Mkdir(cmdopt.out_dir, 0600)
 
 	if err != nil {
 		fmt.Println(err.Error())
