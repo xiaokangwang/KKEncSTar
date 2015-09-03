@@ -127,6 +127,10 @@ func progd_forword(ar cmdoptS) {
 
 	}
 
+	if err := TarStream.Close(); err != nil {
+	log.Fatalln(err)
+}
+
 	_, _, nd := LimitedSizeWriteToFilei.Finialize()
 
 	FileHash := make([]byte, 64)
