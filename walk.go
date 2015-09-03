@@ -22,8 +22,10 @@ import (
 	"strings"
 )
 
-const const_Mbyte int64 = 1024 * 1024
-const const_Kbyte int64 = 1024
+
+const const_Mbyte int64 =1024*1024
+const const_Kbyte int64 =1024
+
 
 func progd_forword(ar cmdoptS) {
 
@@ -78,15 +80,14 @@ func progd_forword(ar cmdoptS) {
 	var LimitedSizeWriteToFilei LimitedSizeWriteToFile
 	LimitedSizeWriteToFilei.InitNow()
 	LimitedSizeWriteToFilei.TargetPatten = ar.out_dir + "/df%X"
-	if !ar.div_unitk {
+	if !ar.div_unitk{
 		LimitedSizeWriteToFilei.BytesPerFile = int64(ar.div_at) * const_Mbyte
-	} else {
+	}else{
 		LimitedSizeWriteToFilei.BytesPerFile = int64(ar.div_at) * const_Kbyte
 	}
 
-	cryptos, err := chacha20.NewXChaCha(xchachakey, nonce)
 
-	fmt.Println(xchachakey, nonce)
+	cryptos, err := chacha20.NewXChaCha(xchachakey, nonce)
 
 	HashWriter := sha3.NewShake256()
 
@@ -363,7 +364,6 @@ func progd_reverse(ar cmdoptS) {
 	LimitedSizeReadFromi.TargetPatten = ar.in_dir + "/df%X"
 
 	cryptos, err := chacha20.NewXChaCha(xchachakey, nonce)
-	fmt.Println(xchachakey, nonce)
 
 	HashWriter := sha3.NewShake256()
 
