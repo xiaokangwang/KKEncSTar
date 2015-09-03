@@ -7,9 +7,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/boltdb/bolt"
 	"github.com/codahale/chacha20"
 	"github.com/golang/snappy"
-	"github.com/syndtr/goleveldb/leveldb"
 	"golang.org/x/crypto/poly1305"
 	"golang.org/x/crypto/sha3"
 	"io"
@@ -22,11 +22,26 @@ import (
 	"strings"
 )
 
+const const_Mbyte int64 = 1024 * 1024
+const const_Kbyte int64 = 1024
+
 func progd_forword(ar cmdoptS) {
 
 	//create metadata leveldb
 
-	db, err := leveldb.OpenFile(ar.in_dir+"/md", nil)
+	dbi, err := bolt.Open(ar.out_dir+"/md", 0600, nil)
+
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
+	tx, err := dbi.Begin(true)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
+	defer tx.Rollback()
+	db, err := tx.CreateBucket([]byte("Ketv1"))
 
 	if err != nil {
 		fmt.Println(err.Error())
@@ -39,7 +54,7 @@ func progd_forword(ar cmdoptS) {
 
 	//store it
 
-	err = db.Put([]byte("nonce"), nonce, nil)
+	err = db.Put([]byte("nonce"), nonce)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(-1)
@@ -61,9 +76,17 @@ func progd_forword(ar cmdoptS) {
 	//init stream
 
 	var LimitedSizeWriteToFilei LimitedSizeWriteToFile
-	LimitedSizeWriteToFilei.TargetPatten = ar.in_dir + "/df%X"
+	LimitedSizeWriteToFilei.InitNow()
+	LimitedSizeWriteToFilei.TargetPatten = ar.out_dir + "/df%X"
+	if !ar.div_unitk {
+		LimitedSizeWriteToFilei.BytesPerFile = int64(ar.div_at) * const_Mbyte
+	} else {
+		LimitedSizeWriteToFilei.BytesPerFile = int64(ar.div_at) * const_Kbyte
+	}
 
 	cryptos, err := chacha20.NewXChaCha(xchachakey, nonce)
+
+	fmt.Println(xchachakey, nonce)
 
 	HashWriter := sha3.NewShake256()
 
@@ -96,7 +119,7 @@ func progd_forword(ar cmdoptS) {
 		_, err = io.Copy(TarStream, filedes)
 
 		if err != nil {
-			fmt.Println("Failed to open file " + rfi[id] + ":" + err.Error())
+			fmt.Println("Failed to Write file " + rfi[id] + ":" + err.Error())
 		}
 
 		filedes.Close()
@@ -115,7 +138,7 @@ func progd_forword(ar cmdoptS) {
 
 	poly1305.Sum(&poly1305sum, FileHash, &poly1305sum_key)
 
-	err = db.Put([]byte("poly1305sum"), poly1305sum[:], nil)
+	err = db.Put([]byte("poly1305sum"), poly1305sum[:])
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(-1)
@@ -124,14 +147,18 @@ func progd_forword(ar cmdoptS) {
 	bb := new(bytes.Buffer)
 	binary.Write(bb, binary.LittleEndian, nd)
 
-	err = db.Put([]byte("packagesum"), bb.Bytes(), nil)
+	err = db.Put([]byte("packagesum"), bb.Bytes())
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(-1)
 	}
 
 	//we won't use it anymore
-	db.Close()
+	if err := tx.Commit(); err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
+	dbi.Close()
 
 	//finially we call par2 to compute reconstruction data
 	if ar.parrate != 0 {
@@ -160,8 +187,8 @@ func progd_forword(ar cmdoptS) {
 		}
 	}
 
-	fmt.Println("Hash: %x", FileHash)
-	fmt.Println("Key: %s", ar.secret_key)
+	fmt.Printf("Hash: %x\n", FileHash)
+	fmt.Printf("Key: %s\n", ar.secret_key)
 
 }
 
@@ -188,14 +215,26 @@ func progd_reverse(ar cmdoptS) {
 	}
 
 	//Open metadata leveldb
-	db, err := leveldb.OpenFile(ar.in_dir+"/md", nil)
+	dbi, err := bolt.Open(ar.in_dir+"/md", 0600, nil)
+
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
+	tx, err := dbi.Begin(false)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
+	defer tx.Rollback()
+	db := tx.Bucket([]byte("Ketv1"))
 
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(-1)
 	}
 
-	ndb, err := db.Get([]byte("packagesum"), nil)
+	ndb := db.Get([]byte("packagesum"))
 
 	if err != nil {
 		fmt.Println(err.Error())
@@ -296,7 +335,7 @@ func progd_reverse(ar cmdoptS) {
 
 	//now we do the actual job
 
-	nonce, err := db.Get([]byte("nonce"), nil)
+	nonce := db.Get([]byte("nonce"))
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(-1)
@@ -319,9 +358,12 @@ func progd_reverse(ar cmdoptS) {
 
 	var LimitedSizeReadFromi LimitedSizeReadFrom
 
+	LimitedSizeReadFromi.InitNow()
+
 	LimitedSizeReadFromi.TargetPatten = ar.in_dir + "/df%X"
 
 	cryptos, err := chacha20.NewXChaCha(xchachakey, nonce)
+	fmt.Println(xchachakey, nonce)
 
 	HashWriter := sha3.NewShake256()
 
@@ -371,12 +413,18 @@ func progd_reverse(ar cmdoptS) {
 
 	var poly1305sum [16]byte
 	var poly1305sum_key [32]byte
-	poly1305sums, err := db.Get([]byte("poly1305sum"), nil)
+	poly1305sums := db.Get([]byte("poly1305sum"))
 
 	copy(poly1305sum[:], poly1305sums)
 	copy(poly1305sum_key[:], poly1305key)
 
 	iscorrect := poly1305.Verify(&poly1305sum, FileHash, &poly1305sum_key)
+
+	if err := tx.Commit(); err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
+	dbi.Close()
 
 	if iscorrect == true {
 		fmt.Println("Correct File data")
@@ -404,6 +452,8 @@ func IsPathAllowed(p string) bool {
 func GenFileList(s string) {
 
 	igni = len(s) + 1
+
+	rfi = make(map[int]string)
 
 	filepath.Walk(s+"/", swalk)
 
@@ -468,10 +518,17 @@ type LimitedSizeWriteToFile struct {
 	BytesPerFile int64
 	io.Writer
 	TargetPatten string
-	cfd          *os.File //current file descripter
-	cfn          *int64   //currnet file number
-	cfnd         *int64   //current file byte written
-	nd           *int64   //bytes written
+	cfd          **os.File //current file descripter
+	cfn          *int64    //currnet file number
+	cfnd         *int64    //current file byte written
+	nd           *int64    //bytes written
+}
+
+func (lf *LimitedSizeWriteToFile) InitNow() {
+	lf.cfn = new(int64)
+	lf.cfnd = new(int64)
+	lf.nd = new(int64)
+	lf.cfd = new(*os.File)
 }
 
 func (lf LimitedSizeWriteToFile) Write(p []byte) (n int, err error) {
@@ -483,7 +540,7 @@ func (lf LimitedSizeWriteToFile) Write(p []byte) (n int, err error) {
 	//create a file if first call
 	if *lf.nd == int64(0) {
 		fn := fmt.Sprintf(lf.TargetPatten, *lf.cfn)
-		lf.cfd, err = os.Create(fn)
+		*lf.cfd, err = os.Create(fn)
 		if err != nil {
 			return 0, err
 		}
@@ -494,17 +551,17 @@ func (lf LimitedSizeWriteToFile) Write(p []byte) (n int, err error) {
 	}
 
 	if int64(len(p))+*lf.cfnd >= lf.BytesPerFile {
-		lf.cfd.Close()
+		(**lf.cfd).Close()
 		*lf.cfn += 1
 		*lf.cfnd = 0
 		fn := fmt.Sprintf(lf.TargetPatten, *lf.cfn)
-		lf.cfd, err = os.Create(fn)
+		*lf.cfd, err = os.Create(fn)
 		if err != nil {
 			return 0, err
 		}
 	}
 
-	n, err = lf.cfd.Write(p)
+	n, err = (**lf.cfd).Write(p)
 
 	*lf.cfnd += int64(n)
 	*lf.nd += int64(n)
@@ -514,7 +571,7 @@ func (lf LimitedSizeWriteToFile) Write(p []byte) (n int, err error) {
 }
 
 func (lf *LimitedSizeWriteToFile) Finialize() (FileCreated, LastSize, TotalBytesWritten int64) {
-	lf.cfd.Close()
+	(**lf.cfd).Close()
 	return *lf.cfn, *lf.cfnd, *lf.nd
 
 }
@@ -522,10 +579,17 @@ func (lf *LimitedSizeWriteToFile) Finialize() (FileCreated, LastSize, TotalBytes
 type LimitedSizeReadFrom struct {
 	io.Reader
 	TargetPatten string
-	cfd          *os.File //current file descripter
-	cfn          *int64   //currnet file number
-	cfnd         *int64   //current file byte readden
-	nd           *int64   //bytes readden
+	cfd          **os.File //current file descripter
+	cfn          *int64    //currnet file number
+	cfnd         *int64    //current file byte readden
+	nd           *int64    //bytes readden
+}
+
+func (lf *LimitedSizeReadFrom) InitNow() {
+	lf.cfn = new(int64)
+	lf.cfnd = new(int64)
+	lf.nd = new(int64)
+	lf.cfd = new(*os.File)
 }
 
 func (lf LimitedSizeReadFrom) Read(p []byte) (n int, err error) {
@@ -536,17 +600,17 @@ func (lf LimitedSizeReadFrom) Read(p []byte) (n int, err error) {
 	//Open a file if first call
 	if *lf.nd == int64(0) {
 		fn := fmt.Sprintf(lf.TargetPatten, *lf.cfn)
-		lf.cfd, err = os.Open(fn)
+		*lf.cfd, err = os.Open(fn)
 		if err != nil {
 			return 0, err
 		}
 	}
 
-	n, err = lf.cfd.Read(p)
+	n, err = (**lf.cfd).Read(p)
 
 	if err == io.EOF {
 		fn := fmt.Sprintf(lf.TargetPatten, *lf.cfn+1)
-		lf.cfd, err = os.Open(fn)
+		*lf.cfd, err = os.Open(fn)
 		if err != nil {
 
 			if os.IsNotExist(err) {
@@ -563,7 +627,7 @@ func (lf LimitedSizeReadFrom) Read(p []byte) (n int, err error) {
 }
 
 func (lf *LimitedSizeReadFrom) Finialize() (FileCreated, LastSize, TotalBytesWritten int64) {
-	lf.cfd.Close()
+	(**lf.cfd).Close()
 	return *lf.cfn, *lf.cfnd, *lf.nd
 
 }

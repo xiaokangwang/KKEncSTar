@@ -21,7 +21,7 @@ type cmdoptS struct {
 //define and parse commandline arg
 func argpg() cmdoptS {
 	var cmdopt cmdoptS
-	flag.IntVar(&cmdopt.div_at, "ds", -1, "Define what size should we keep our data block below. Unset means no max size.")
+	flag.IntVar(&cmdopt.div_at, "ds", 24, "Define what size should we keep our data block below. Unset means 24.")
 	flag.BoolVar(&cmdopt.div_unitk, "duk", false, "The unit of ds, if set to true is KByte or it will be MByte.")
 	flag.StringVar(&cmdopt.in_dir, "id", "in", "The dir to be progress.")
 	flag.StringVar(&cmdopt.out_dir, "od", "out", "The dir output go to.")
@@ -108,7 +108,7 @@ func main() {
 
 	//create output folder
 
-	err := os.Mkdir(cmdopt.out_dir, 0600)
+	err := os.Mkdir(cmdopt.out_dir, 0700)
 
 	if err != nil {
 		fmt.Println(err.Error())
