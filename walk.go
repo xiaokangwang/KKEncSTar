@@ -22,10 +22,8 @@ import (
 	"strings"
 )
 
-
-const const_Mbyte int64 =1024*1024
-const const_Kbyte int64 =1024
-
+const const_Mbyte int64 = 1024 * 1024
+const const_Kbyte int64 = 1024
 
 func progd_forword(ar cmdoptS) {
 
@@ -80,12 +78,11 @@ func progd_forword(ar cmdoptS) {
 	var LimitedSizeWriteToFilei LimitedSizeWriteToFile
 	LimitedSizeWriteToFilei.InitNow()
 	LimitedSizeWriteToFilei.TargetPatten = ar.out_dir + "/df%X"
-	if !ar.div_unitk{
+	if !ar.div_unitk {
 		LimitedSizeWriteToFilei.BytesPerFile = int64(ar.div_at) * const_Mbyte
-	}else{
+	} else {
 		LimitedSizeWriteToFilei.BytesPerFile = int64(ar.div_at) * const_Kbyte
 	}
-
 
 	cryptos, err := chacha20.NewXChaCha(xchachakey, nonce)
 
@@ -128,8 +125,8 @@ func progd_forword(ar cmdoptS) {
 	}
 
 	if err := TarStream.Close(); err != nil {
-	log.Fatalln(err)
-}
+		log.Fatalln(err)
+	}
 
 	_, _, nd := LimitedSizeWriteToFilei.Finialize()
 
@@ -413,7 +410,7 @@ func progd_reverse(ar cmdoptS) {
 
 	FileHash := make([]byte, 64)
 	HashWriter.Read(FileHash)
-	fmt.Println("Hash: %x", FileHash)
+	fmt.Printf("Hash: %x\n", FileHash)
 
 	var poly1305sum [16]byte
 	var poly1305sum_key [32]byte
@@ -424,10 +421,6 @@ func progd_reverse(ar cmdoptS) {
 
 	iscorrect := poly1305.Verify(&poly1305sum, FileHash, &poly1305sum_key)
 
-	if err := tx.Commit(); err != nil {
-		fmt.Println(err.Error())
-		os.Exit(-1)
-	}
 	dbi.Close()
 
 	if iscorrect == true {
@@ -513,8 +506,9 @@ type DecryptedReader struct {
 
 func (lf DecryptedReader) Read(p []byte) (n int, err error) {
 	inputBuffer := make([]byte, len(p))
-	lf.decryptFunc.XORKeyStream(inputBuffer, p)
-	return lf.target.Read(inputBuffer)
+	n, err = lf.target.Read(inputBuffer)
+	lf.decryptFunc.XORKeyStream(p, inputBuffer)
+	return n, err
 
 }
 
@@ -625,10 +619,10 @@ func (lf LimitedSizeReadFrom) Read(p []byte) (n int, err error) {
 		}
 		*lf.cfn += 1
 		*lf.cfnd = 0
-		return 0,nil
+		return 0, nil
 	}
-	*lf.nd+=int64(n)
-	*lf.cfnd+=int64(n)
+	*lf.nd += int64(n)
+	*lf.cfnd += int64(n)
 	return n, err
 
 }
