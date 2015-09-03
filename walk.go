@@ -202,9 +202,9 @@ func progd_reverse(ar cmdoptS) {
 			fmt.Println("Unable to whereis par2, metadata reconstruction was ignored:" + err.Error())
 		}
 
-		cmd := exec.Command("par2", "r", "-a"+"mdpp", "-v", "--", "md")
+		cmd := exec.Command("par2", "r", "mdpp.par2", "-v", "--", "md")
 		cmd.Stdout = os.Stdout
-		Absp, _ := filepath.Abs(ar.out_dir)
+		Absp, _ := filepath.Abs(ar.in_dir)
 		cmd.Dir = Absp
 		err = cmd.Start()
 		if err != nil {
@@ -304,13 +304,13 @@ func progd_reverse(ar cmdoptS) {
 			fmt.Println("Unable to whereis par2, data reconstruction was ignored:" + err.Error())
 		}
 
-		cmdargs := []string{"r", "-a" + "mdpp", "-v", "--"}
+		cmdargs := []string{"r", "mdpp.par2", "-v", "--"}
 
 		cmdargs = append(cmdargs, all_file...)
 
 		cmd := exec.Command("par2", cmdargs...)
 		cmd.Stdout = os.Stdout
-		Absp, _ := filepath.Abs(ar.out_dir)
+		Absp, _ := filepath.Abs(ar.in_dir)
 		cmd.Dir = Absp
 		err = cmd.Start()
 		if err != nil {
