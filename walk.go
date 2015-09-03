@@ -390,6 +390,9 @@ func progd_reverse(ar cmdoptS) {
 			filenamex = url.QueryEscape(hdr.Name)
 		}
 
+		dirc := filepath.Dir(ar.out_dir + "/" + filenamex)
+		os.MkdirAll(dirc, 0700)
+
 		cfhd, err := os.Create(ar.out_dir + "/" + filenamex)
 
 		if err != nil {
