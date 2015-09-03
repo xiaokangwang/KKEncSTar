@@ -622,7 +622,7 @@ func (lf LimitedSizeReadFrom) Read(p []byte) (n int, err error) {
 		}
 		*lf.cfn += 1
 		*lf.cfnd = 0
-		return 0, nil
+		return lf.Read(p)
 	}
 	*lf.nd += int64(n)
 	*lf.cfnd += int64(n)
